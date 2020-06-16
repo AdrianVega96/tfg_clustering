@@ -4,10 +4,11 @@ library(psych)  ## EFA
 library(tidyverse) ## Para el manejo de datos
 library(mlogit) ## Regresiones logisticas multinom.
 ## one-way ANOVA
-library(compute.es); 
-library(car); 
-library(multcomp);
-library(pastecs); ## Estadísticos descriptivos
+#library(compute.es); 
+#library(car); 
+#library(multcomp);
+#library(pastecs); ## Estadísticos descriptivos
+##
 library(vcd)
 library(normtest)
 ## 

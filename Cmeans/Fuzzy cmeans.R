@@ -24,7 +24,12 @@ datao <- one_hot(cluster_items[1:4])
 datao <- cbind(datao,cluster_items[5:10])
 ## Estimo modelos con las variables con representaci?n one-hot y creo tabla para
  # seleccionar el mejor modelo
-model_selection_table(datao)
+indexes <- model_selection_table(datao)
+
+index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$xb),"Xie-Beni")
+index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$fs),"Fukuyama-Sugeno")
+index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$pc),"Partition coefficient")
+index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$pe),"Partition entropy")
 
 model <- cmeans(datao,3,FALSE,iter.max = 100,dist = "euclidean",method = "cmeans",1.1)
 

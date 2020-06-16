@@ -388,6 +388,38 @@ dist_graph <- function(modAssig){
 
 ## C-means
 
+##
+index_graph <- function(K,m,i_matrix,index_name){
+  library(plotly)
+  ex <- list(
+    title = "m",
+    range = c(1.1,2)
+  )
+  ey <- list(
+    title = "N clusteres",
+    tickvals=K,
+    ticktext=K
+  )
+  ez <- list(
+    title = "Indice"
+  )
+  sc <- list(xaxis=ex,yaxis=ey,zaxis=ez)
+  p <- plot_ly(x = m, y = K, z = i_matrix, colors = "Accent") %>% add_surface() %>% layout(title = index_name, scene = sc)
+  print(p)
+}
+
+index_matrix <- function(K,m,val){
+  res <- matrix(0,nrow = length(K),ncol = length(m))
+  val_index <- 1
+  for (i in 1:length(K)){
+    for (j in 1:length(m)) {
+      res[i,j] <- val[val_index]
+      val_index <- val_index+1
+    }
+  }
+  return(res)
+}
+
 ## Tabla con los valores de los distintos índices para seleccionar
  # el mejor modelo
  # Hace uso de los items utilizados para clusterizar
@@ -419,7 +451,11 @@ model_selection_table <- function(data){
   # de la tabla
   colnames(Ktable) <- tcolnames
   rownames(Ktable) <- trownames
-  ztable(Ktable)
+  t <- ztable(Ktable)
+  print(t)
+  res <- list("m" = fuzzy_index, "K" = as.factor(fuzzy_cluster), "xb" = xb, "fs" = fs,
+              "pc" = pc, "pe" = pe)
+  return(res)
 }
 
 ## Data analysis
