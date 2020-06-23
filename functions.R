@@ -1,62 +1,235 @@
-## Análisis de Clases Latentes (LCA)
-## Funcion para la entropia
- # mod es el modelo de clases latentes para el cual se calcula la entropía
+# Función que reproduce clustering mediante Análisis de Clases Latentes (LCA)
+# Hace uso de los datos que incluyen los items para clusterizar.
+My_lca <- function(my_data){
+  library(xlsx)
+  library(mirt)
+  
+  # Se extrae dataframe con los items para clusterizar y se calculan los modelos a comparar.
+  cluster_items <- my_data[137:146]
+  model1 <- mdirt(cluster_items, 2, itemtype = "lca", verbose = FALSE)
+  model2 <- mdirt(cluster_items, 3, itemtype = "lca", verbose = FALSE)
+  model3 <- mdirt(cluster_items, 4, itemtype = "lca", verbose = FALSE)
+  model4 <- mdirt(cluster_items, 5, itemtype = "lca", verbose = FALSE)
+  model5 <- mdirt(cluster_items, 6, itemtype = "lca", verbose = FALSE)
+  # Se realiza tabla comparativa a partir de la lista de modelos.
+  lcas <- list(model1,model2,model3,model4,model5)
+  selection_table_lca(lcas,500)
+  
+  # Nombres de clústeres e items para funciones gráficas.
+  classnames <- c('1','2','3','4','5')
+  itemnames <- c('Sexo','ECivil','NFamiliar','PriEmp','Edad','Exp','NEmple','NSocios',
+                 'NHijos','NivelEd')
+  # Se generan y guardan las gráficas incluidas en la memoria.
+  mult.param <- multinomial_graph(model2,3,classnames,itemnames)
+  ggsave("LCA mirt/responses.png", mult.param, width = 7.5, height = 5, units = "in")
+  class.prop <- proportion_graph(model2,3,classnames)
+  ggsave("LCA mirt/proportions.png", class.prop, width = 7.5, height = 5, units = "in")
+  
+  # Se retorna un dataframe con los datos clusterizados, el error de clasificación y unas
+  # dummys para realizar regresiones lineales.
+  mod.groups <- cbind("Cluster" = modalassign(fscores(model2)),"error" = classError(model2)[[1]],
+                      dummyVar(modalassign(fscores(model2)),"Cluster"))
+  reg.data <- cbind(my_data,mod.groups)
+  write.xlsx(reg.data,"DatosClusterizados.xlsx",sheetName = "LCA", append = TRUE)
+  return(reg.data)
+}
+
+# Función que reproduce clustering mediante C-means.
+# Hace uso de los datos que incluyen los items para clusterizar.
+My_cmeans <- function(my_data){
+  library(e1071)
+  library(xlsx) 
+  
+  # Se eliminan obsevaciones para las que faltan respuestas. El algoritmo no funciona cuando
+  # existen NA.
+  my_data <- drop_na(my_data,137:146)
+  cluster_items <- my_data[137:146]
+  
+  # Se codifican mediante one-hot los items nominales y se combina con los ordinales.
+  datao <- one_hot(cluster_items[1:4])
+  datao <- cbind(datao,cluster_items[5:10])
+ 
+  # Se obtienen índices para seleccionar el modelo y se generan los gráficos de estos índices.
+  indexes <- selection_table_cmeans(datao)
+  
+  index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$xb),"Xie-Beni")
+  index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$fs),"Fukuyama-Sugeno")
+  index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$pc),"Partition coefficient")
+  index_graph(indexes$K,indexes$m,index_matrix(indexes$K,indexes$m,indexes$pe),"Partition entropy")
+  
+  # Se clusterizan las observaciones.
+  model <- cmeans(datao,3,FALSE,iter.max = 100,dist = "euclidean",method = "cmeans",1.1)
+  
+  # Previamente, se separan las observaciones de cada cluster en distintos dataframes.
+  dataux <- as.data.frame(cbind(my_data,"Cluster" = model$cluster))
+  datac1 <- dataux[dataux$Cluster==1,]
+  datac2 <- dataux[dataux$Cluster==2,]
+  datac3 <- dataux[dataux$Cluster==3,]
+  
+  # Se generan los gráficos para el modelo final y se guardan.
+  pie <- dist_graph(model$cluster)
+  ggsave("Cmeans/proportions.png", pie, width = 7.5, height = 5, units = "in")
+  plt1 <- response_graph(datac1[137:146],colnames(my_data)[137:146])
+  ggsave("Cmeans/responsesc1.png", plt1, width = 7.5, height = 5, units = "in")
+  plt2 <- response_graph(datac2[137:146],colnames(my_data)[137:146])
+  ggsave("Cmeans/responsesc2.png", plt2, width = 7.5, height = 5, units = "in")
+  plt3 <- response_graph(datac3[137:146],colnames(my_data)[137:146])
+  ggsave("Cmeans/responsesc3.png", plt3, width = 7.5, height = 5, units = "in")
+  
+  # Se guardan los datos clusterizados y se retornan para análisis posteriores.
+  write.xlsx(dataux,"DatosClusterizados.xlsx",sheetName = "Cmeans", append = TRUE)
+  return(dataux)
+}
+
+# Función que reproduce clustering mediante K-means.
+# Hace uso de los datos que incluyen los items para clusterizar.
+My_kmeans <- function(my_data){
+  library(xlsx)
+  
+  # Se eliminan obsevaciones para las que faltan respuestas. El algoritmo no funciona cuando
+  # existen NA.
+  my_data <- drop_na(my_data,137:146)
+  cluster_items <- my_data[137:146]
+  
+  # Se transforamn solo las variables categ?ricas mediante one-hot, las ordinales
+  # se mantienen igual.
+  datao <- one_hot(cluster_items[1:4])
+  datao <- cbind(datao,cluster_items[5:10])
+  # Se generan gráficos para la selección del modelo y son guardados (Elbow, Gap statistic y
+  # silhouette).
+  mod_sel_graphs <- selection_graphs(datao,1)
+  ggsave("Kmeans/elbow-kmeans.png", mod_sel_graphs[[1]], width = 7.5, height = 5, units = "in")
+  ggsave("Kmeans/sil-kmeans.png", mod_sel_graphs[[2]], width = 7.5, height = 5, units = "in")
+  ggsave("Kmeans/gap-kmeans.png", mod_sel_graphs[[3]], width = 7.5, height = 5, units = "in")
+  
+  # Se clusterizan las observaciones.
+  model <- kmeans(datao,3)
+  
+  # Separo las observaciones de cada cluster.
+  dataux <- as.data.frame(cbind(my_data,"Cluster" = model$cluster))
+  datac1 <- dataux[dataux$Cluster==1,]
+  datac2 <- dataux[dataux$Cluster==2,]
+  datac3 <- dataux[dataux$Cluster==3,]
+  
+  # Se generan los graficos para el modelo final de tres clústeres y se guardan.
+  pie <- dist_graph(model$cluster)
+  pie
+  ggsave("Kmeans/proportions.png", pie, width = 7.5, height = 5, units = "in")
+  plt1 <- response_graph(datac1[137:146],colnames(my_data[137:146]))
+  plt1
+  ggsave("Kmeans/responsesc1.png", plt1, width = 7.5, height = 5, units = "in")
+  plt2 <- response_graph(datac2[137:146],colnames(my_data[137:146]))
+  plt2
+  ggsave("Kmeans/responsesc2.png", plt2, width = 7.5, height = 5, units = "in")
+  plt3 <- response_graph(datac3[137:146],colnames(my_data[137:146]))
+  plt3
+  ggsave("Kmeans/responsesc3.png", plt3, width = 7.5, height = 5, units = "in")
+  
+  # Guardar y devolver datos para análisis posteriores.
+  write.xlsx(dataux,"DatosClusterizados.xlsx",sheetName = "Kmeans", append = TRUE)
+  return(dataux)
+}
+
+# Función que reproduce clustering mediante K-means.
+# Hace uso de los datos que incluyen los items para clusterizar.
+My_kmodes <- function(my_data){
+  library(xlsx)
+  library(klaR)
+  
+  # Se eliminan obsevaciones para las que faltan respuestas. El algoritmo no funciona cuando
+  # existen NA.
+  my_data <- drop_na(my_data,137:146)
+  cluster_items <- my_data[137:146]
+  
+  # Se generan gráficos para la selección del modelo y son guardados (Elbow, Gap statistic y
+  # silhouette).
+  mod_sel_graphs <- selection_graphs(cluster_items,2)
+  ggsave("Kmodes/elbow-kmodes.png", mod_sel_graphs[[1]], width = 7.5, height = 5, units = "in")
+  ggsave("Kmodes/sil-kmodes.png", mod_sel_graphs[[2]], width = 7.5, height = 5, units = "in")
+  ggsave("Kmodes/gap-kmodes.png", mod_sel_graphs[[3]], width = 7.5, height = 5, units = "in")
+  
+  # Se clusterizan las datos.
+  model <- kmodes(cluster_items,3,iter.max = 10,weighted = FALSE)
+  
+  # Separo las observaciones de cada cluster.
+  dataux <- as.data.frame(cbind(my_data,"Cluster" = model$cluster))
+  datac1 <- dataux[dataux$Cluster==1,]
+  datac2 <- dataux[dataux$Cluster==2,]
+  datac3 <- dataux[dataux$Cluster==3,]
+  
+  # Se generan los gráficos y se guardan.
+  pie <- dist_graph(model$cluster)
+  pie
+  ggsave("Kmodes/proportions.png", pie, width = 7.5, height = 5, units = "in")
+  plt1 <- response_graph(datac1[137:146],colnames(my_data)[137:146])
+  plt1
+  ggsave("kmodes/responsesc1.png", plt1, width = 7.5, height = 5, units = "in")
+  plt2 <- response_graph(datac2[137:146],colnames(my_data)[137:146])
+  plt2
+  ggsave("kmodes/responsesc2.png", plt2, width = 7.5, height = 5, units = "in")
+  plt3 <- response_graph(datac3[137:146],colnames(my_data)[137:146])
+  plt3
+  ggsave("kmodes/responsesc3.png", plt3, width = 7.5, height = 5, units = "in")
+  
+  # Guardar datos para análisis posteriores.
+  write.xlsx(dataux,"DatosClusterizados.xlsx",sheetName = "Kmodes", append = TRUE)
+  return(dataux)
+}
+
+# Función para la entropia.
+# mod es el modelo de clases latentes para el cual se calcula la entropía.
 entropy <- function(mod){
-  en<--sum(fscores(mod)*log(fscores(mod)),na.rm = TRUE)
-  e<-1-en/(nrow(fscores(mod))*log(ncol(fscores(mod))))
+  en<--sum(fscores(mod)*log(fscores(mod)),na.rm = TRUE) 
+  e<-1-en/(nrow(fscores(mod))*log(ncol(fscores(mod)))) 
   return(e)
 }
 
-## Funci?n para categorizar las variables no categoricas y simplificar
-  # las categ?ricas.
-data_pre <- function(data){
-  ## Los -1 que indican la falta del dato los modifico por NA
+# Función para categorizar las variables no categoricas y simplificar las ya categóricas.
+# Hace uso data que son datos inicialmente leídos.
+data_preparation <- function(data){
+  # Los -1 que indican la falta del dato, son cambiados por NA.
   data[data<0] <- NA
-  datafi <- data
-  ##("S","AN","EsCi","NHij","Educ","PriEmp","Exp","NegFam","NEmpl","NSocios")
+  datafi <- data # Se guardan los datos iniciales para combinarlos a las nuevas variables generadas.
   data <- data %>% select(v001,v002,v003,v004,v005,v007,v009,v010,v012,v013)
-  ## Calculo la edad de cada encuestado
+  # Se calcula la edad de cada encuestado en base al año 2019.
   edad <- 2019-data$v002
-  ## La categorizo. Menor de 41 a?os (1), entre 41 y 60 (2) y m?s de 60 (3)
+  # Se categoriza la edad.
   edcat <- edad
   edcat[edcat<=40] <- 1
   edcat[edcat<=60 & edcat>40] <- 2
   edcat[edcat>60 & edcat<=120] <- 3
-  ## Categorizo la experiencia. Menor de 6 a?os (1), entre 6 y 15 a?os (2) y
-  # mayor de 16 a?os (3)
+  # Se categoriza la experiencia.
   expcat <- data$v009
   expcat[expcat<6] <- 1
   expcat[expcat>=6 & expcat<16] <- 2
   expcat[expcat>=16] <- 3
-  ## Categorizo el n?mero de empleados. Menos de 6 (1), entre 6 y 20 (2) y
-  # m?s de 20 (3)
+  # Se categoriza el número de empleados.
   nempcat <- data$v012
   nempcat[nempcat<=5] <- 1
   nempcat[nempcat>5 & nempcat<=20] <- 2
   nempcat[nempcat>20] <- 3
-  ## Categorizo el n?mero de socios. Sin socios (1) y con socios (2)
+  # Se categoriza el ´numero de socios.
   nsocat <- data$v013
   nsocat[nsocat>=1] <- 2
   nsocat[nsocat==0] <- 1
-  ## Categorizo el n?mero de hijos. Sin hijos o con menos de 3 hijos (1) y
-  # con 3 hijos o m?s (2)
+  # Se categoriza el número de hijos.
   nhijcat <- data$v004
   nhijcat[nhijcat==0 & nhijcat<=2] <- -1
   nhijcat[nhijcat>2] <- 2
   nhijcat[nhijcat==-1] <- 1
-  ## Categorizo el nivel educativo. Estudios primarios (1), Bachillerato/ciclo (2) y Estudios universitarios (3)
+  # Se simplifica el nivel educativo (se reducen categorías).
   educat <- data$v005
   educat[educat<=3] <- 1
   educat[educat>3 & educat<=5] <- 2
   educat[educat>5] <- 3
-  ## Elimino valores extra?os
+  # Elimino valores extraños.
   data$v003[data$v003==0] <- NA
   data$v003[data$v003>20] <- NA
-  ## Sumo uno a las variables con 0 porque la librer?a no los acepta.
+  ## Sumo uno a las variables con 0 porque la librería para LCA no los acepta.
   data$v010 <- data$v010+1
   data$v007 <- data$v007+1
-  ## Genero el dataframe con las nuevas variables categ?ricas y le
-  # asigno nombre las columnas.
+  # Se genera el dataframe con la combinación de las nuevas variables categóricas 
+  # y los datos iniciales y se asignan los nombres.
   data2 <- cbind(datafi,data$v001,data$v003,data$v010,
                  data$v007,edcat,expcat,nempcat,nsocat,nhijcat,
                  educat)
@@ -64,21 +237,16 @@ data_pre <- function(data){
                        'Exp','NEmple','NSocios','NHijos','NivelEd')
   return(data2)
 }
-## Crear dummys para regresiones y como auxiliar para la codificación one-hot
- # dataCol columna de datos que se corresponde con la variable para la que 
- # se requieren dummys. 
- # nombre es el nombre de la variable, se utiliza para generar un nombre del 
- # estilo “nombre_número”
+
+# Crear dummys para regresiones y como auxiliar para la codificación one-hot
+# dataCol columna de datos que se corresponde con la variable para la que se requieren dummys. 
+# nombre es el nombre de la variable, se utiliza para generar un nombre del estilo “nombre_número”
 dummyVar <- function(dataCol,nombre){
-  # Se inicializan las variables auxiliares necesarias
   aux <- c() # Dummy
   res <- c() # Resultado
   cnames <- c() # Nombres de columnas
-  # Se recorre un bucle que itera tantas veces como indica el mayor 
-  # valor de la columna de datos
+  # Se genera una dummy para cada valor de la variable
   for (i in 1:max(dataCol)){
-    # Se recorre la columna de datos para generar la dummy, es decir, 
-    # 1 o 0 cuando se cumpla la condición
     for (e in 1:length(dataCol)){
       if (dataCol[e]==i){
         aux[e] <- 1
@@ -88,55 +256,52 @@ dummyVar <- function(dataCol,nombre){
     }
     # Se va generando el dataframe final uniendo las dummys por columnas
     res <- cbind(res,aux)
-    # Se genera la lista de nombres de columnas para asignarlos después
+    # Se genera la lista de nombres de columnas para asignarlos
     cnames <- c(cnames,paste0(nombre,"_",i))
   }
   colnames(res) <- cnames
   return (res)
 }
 
-## Funci?n para el c?lculo de la probabilidad de error de clasificaci?n
-# de cada observaci?n, as? como el total de todo el modelo.
-# Hace uso del modelo en cuesti?n.
+# Función para el cálculo de la probabilidad de error de clasificación
+# de cada observación, así como el total de todo del modelo.
+# Hace uso de mod que es el modelo en cuestión.
 classError <- function(mod){
   errors <- c()
-  # Probabilidades de asignaci?n de cada observaci?n.
+  # Probabilidades de asignación de cada observación.
   probs <- fscores(mod)
   for (i in 1:nrow(probs)){
-    # Para cada observaci?n, la probabilidad de error es 
-    # 1 menos la probabilidad de asignaci?n mayor, es decir,
-    # entendemos que se produce un error cuando no se asigna
-    # al grupo de mayor probabilidad.
+    # Para cada observación, la probabilidad de error es 
+    # 1 menos la probabilidad de asignación mayor, es decir,
+    # cuando asignación modal y probabilística no coinciden.
     errors[i] <- (1 - max(probs[i,]))
   }
-  # Se calcula la proporci?n total de errores del modelo
+  # Se calcula la proporción total de errores del modelo
   totError <- sum(errors)/length(errors)
-  # Se crea una lista con ambos valores de inter?s para devolvera como resultado.
+  # Se crea una lista con ambos valores de interés para devolver como resultado.
   res <- list(errors,totError)
   return (res)
 }
 
-## Calculo el BLRT para cada par de modelos posible, es decir,
+# Función para el cálculo el BLRT para cada par de modelos posible, es decir,
 # para todos los modelos con K y K+1 clases. 
 # Se realiza el bootstrap con nboot muestras diferentes, en caso de no
-# especificarse el bootstrap se realizar? con 500 muestras.
+# especificarse el bootstrap se realizará con 500 muestras.
 bootlrt <- function(lcas,nboot=NULL){
-  # Vector resultado inicializado con un 0, puesto que no existe comparaci?n
-  # entre un modelo de 1 y 2 clusters.
+  library(doParallel)
   pValues <- c(0)
-  # Creo distintas sesiones de R para la ejecuci?n en paralelo.
+  # Creo distintas sesiones de R para la ejecución en paralelo.
   cl <- makeCluster(detectCores()-1)
   # Ejecuto las siguientes instrucciones en cada una de las sesiones.
   clusterEvalQ(cl,source("functions.R"))
   clusterEvalQ(cl,library(poLCA))
   clusterEvalQ(cl,library(mirt))
-  # Ejecuto cada iteraci?n del bucle en paralelo y combino los resultados en
-  # un vector. De esta manera, el tiempo de ejecuci?n se reduce a menos de la
-  # mitad del tiempo original.
+  # Ejecuto cada iteración del bucle en paralelo y combino los resultados en
+  # un vector.
   registerDoParallel(cl)
   aux <- foreach (i=1:(length(lcas)-1), .combine = "c") %dopar% {
-    # Ejecuto la funci?n que calcula el estad?stico para cada par de modelos.
-    bootlrtaux(lcas[[i]],lcas[[i+1]],nboot)
+    # Ejecuto la función que calcula el estadístico para cada par de modelos.
+    bootlrt_auxiliar(lcas[[i]],lcas[[i+1]],nboot)
   }
   # Cierro las distintas sesiones de R
   stopCluster(cl)
@@ -145,43 +310,40 @@ bootlrt <- function(lcas,nboot=NULL){
   return(pValues)
 }
 
-## Calcula el Bootstrap Likelihood Ratio Test (BLRT) entre dos modelos estimados.
+# Función para el cálculo del Bootstrap Likelihood Ratio Test (BLRT) entre dos modelos estimados.
 # nboot es el número de muestras de bootstrap. 500 por defecto.
 # mod0 es el primer modelo
 # mod1 es el segundo modelo (con más clases latentes)
-bootlrtaux <- function(mod0,mod1, nboot=500){
+bootlrt_auxiliar <- function(mod0,mod1, nboot=500){
+  library(poLCA)
   lrt0 <- anova(mod0,mod1,verbose=FALSE)$X2[2] # Calcula LRT
   cont <- 0 # Contador para el cálculo del p valor (Proporción de LRT mayores o iguales al original)
   tot <- 0 # Contador de modelos que convergen, es decir, que se maximiza la función de log-likelihood.
   for (i in 1:nboot){
     # Creo una muestra del tamaño de la orginal a partir de las probabilidades condicionales y
-    # las probabilidades a priori, es decir, la proporción de observaciones que pertenece a cada
-    # cluster.
+    # las probabilidades a priori.
     datsim <- poLCA.simdata(N=NROW(fscores(mod0)),probs = summary(mod0)[1:10],P = summary(mod0)[[11]][,ncol(summary(mod0)[[11]])])[[1]]
     # Estimo dos nuevos modelos con las misma condiciones que los originales con la nueva muestra.
     modellr <- mdirt(datsim,NCOL(fscores(mod0)),itemtype = "lca",verbose = FALSE, technical = list(warn=FALSE, message=FALSE))
     modelmr <- mdirt(datsim,NCOL(fscores(mod1)),itemtype = "lca",verbose = FALSE, technical = list(warn=FALSE, message=FALSE))
+    # Se comprueba si el modelo converge
     if (!extract.mirt(modellr, "converged")) next
     if (!extract.mirt(modelmr, "converged")) next
     tot <- tot + 1
-    # Vuelvo a calcular el estad?stico LRT con las nuevos modelos, pero solo si el modelo converge.
-    # lliklr <- extract.mirt(modellr, "logLik")
-    # llikmr <- extract.mirt(modelmr, "logLik")
-    # lrt <- -2*(lliklr-llikmr)
     lrt <- anova(modellr,modelmr,verbose=FALSE)$X2[2]
-    # Incremento el contador si se cumple la condici?n mencionada anteriormente
+    # Incremento el contador si se cumple la condición mencionada anteriormente
     if(lrt>=lrt0) cont <- cont+1
   }
-  # Calculo el p valor como la proporci?n del estad?stico que cumple la condici?n.
+  # Calculo el p valor como la proporción del estadístico que cumple la condición.
   pvalue <- (1+cont)/(1+nboot)
-  #pvalue <- (1+cont)/(1+tot)
   return(pvalue)
 }
 
-## Crear tablas para la selecci?n del modelo.
+# Crear tablas para la selección del modelo.
 # lcas es una lista con los modelos estimados.
 # nboot es el número de muestras de bootstrap para BLRT
-ctable <- function(lcas,nboot=NULL){
+selection_table_lca <- function(lcas,nboot=NULL){
+  library(gridExtra)
   #Se crean vectores con los estad?sticos calculados para cada modelo
   bics <- sapply(lcas,function(x) extract.mirt(x,"BIC"))
   aics <- sapply(lcas,function(x) extract.mirt(x,"AIC"))
@@ -200,13 +362,20 @@ ctable <- function(lcas,nboot=NULL){
   colnames(Ktable) <- tcolnames
   Ktable <- round(Ktable, 2)
   Ktable[1,8] <- "-"
-  # Se muestra tabla por el viewer de RStudio
-  ztable(Ktable)
+  # Se guarda la tabla como imágen
+  png(filename = "LCA mirt/SelectionTableLCA.png", width = 65*ncol(Ktable), height = 25*nrow(Ktable))
+  grid.table(Ktable)
+  dev.off()
 }
 
-## Tratamiento de los resultados para realizar las gr?ficas.
-datatreat <- function(probs=NULL, ncl=NULL, clnames=NULL, predcl=NULL, classDist=NULL){
-  ## Compruebo si es el gr?fico sobre la distribuci?n de los individuos en grupos
+# Función para el tratamiento de los resultados para realizar las gráficas en LCA.
+# probs se corresponde con los parámetros multinomiales en LCA.
+# ncl es el número de clústeres.
+# clnames es la lista con el nombre de las clases.
+# predcl es una columna de datos con la asignación modal de las observaciones a los clústeres.
+# classDist se corresponde con la proporción de las clases o probabilidad a priori
+graphic_data_preparation <- function(probs=NULL, ncl=NULL, clnames=NULL, predcl=NULL, classDist=NULL){
+  # Se comprueba si es el gráfico sobre las proporciones
   if (!is.null(predcl)){
     predclass <- predcl
     for (i in 1:ncl){
@@ -214,39 +383,35 @@ datatreat <- function(probs=NULL, ncl=NULL, clnames=NULL, predcl=NULL, classDist
     }
     return(predclass)
   }
-  ## Convierto las matrices de probabilidades en un dataframe
+  # Se convierten las matrices de probabilidades en un dataframe
   # para poder darle el formato que necesito para graficarlos
   probs.df <- as.data.frame(probs)
-  ## Obtengo los nombres de las columnas
+  # Se obtienen los nombres de las columnas
   colnames2 <- names(probs.df)
-  ## Pivoto para a?adir la informaci?n de las columnas por debajo en las filas
-  # de manera parecida a la transposici?n de una matriz (Se pierde informaci?n)
-  # sobre las clases
+  # Comienza tratamiento de datos para realizar gráficos
   probs2 <-  probs.df%>%pivot_longer(cols = colnames2, values_to = "value")
-  ## Creo un vector con los nombres de los grupos para a?adir al dataframe.
-  # Lo necesitar? m?s adelante ya que perder? esta informaci?n en el proceso.
+  # Se crea un vector con los nombres de los grupos para añadir al dataframe.
+  # Se necesita más adelante ya que se pierde esta información en el proceso.
   classvector <- c()
   for(i in 1:ncl){
-    #classvector <- c(rep('Class 1', nind*nres),rep('Class 2', nind*nres),rep('Class 3', nind*nres))
     classvector <- c(classvector, rep(clnames[i], nrow(probs2)/ncl))
   }
   probs2$class <- classvector
-  ## Trato la columna 'name'
-  # Tiene el siguiente formato 'ECivil.category_1', por lo que
-  # ... separo la columna en dos a partir de '.', en item incluyo
-  # el indicador y en response la respuesta, en el ejemplo, 'ECivil' a
-  # 'item' y 'Category_1' a 'response'.
+  # Trato la columna 'name'
+  # Tiene el siguiente formato 'ECivil.category_1' y separo la columna en dos.
+  # el indicador en la columna item y en response la respuesta.
   probs2 <- separate(probs2, col = 'name', into = c('item','response'),sep = '\\.')
   probs2$response <- gsub("category_","",probs2$response)
   return(probs2)
 }
 
-## Realiza el gr?fico sobre los patrones de respuesta de cada clase, tambi?n
-# llamadas probabilidades condicionales P(X=t|Y).
+# Función que realiza el grafico sobre los patrones de respuesta de cada clase, también
+# llamadas probabilidades condicionales P(X=t|Y) para lca.
 # Hace uso del modelo estimado, el n?mero de clusters y los nombres de 
 # los clusters.
-compgraph <- function(mod,ncl,clnames){
-  probs <- datatreat(summary(mod)[1:10],ncl,clnames)
+multinomial_graph <- function(mod,ncl,clnames,itemnames){
+  library(ggplot2)
+  probs <- graphic_data_preparation(summary(mod)[1:10],ncl,clnames)
   plt <- ggplot(probs)
   # A?ado los ejes x e y, adem?s especif?co que se trata de un gr?fico de columnas
   plt <-  plt + aes(x = probs$response, y = probs$value) + geom_col() +
@@ -260,14 +425,16 @@ compgraph <- function(mod,ncl,clnames){
   plt
 }
 
-## Realiza el gr?fico circular sobre el porcentaje de individuos que hay en 
+# Función que realiza el gráfico circular sobre el porcentaje de individuos que hay en 
 # cada clase.
-# Hace uso del modelo estimado, del n?mero de clusters y de los nombres
-# de cada cluster.
-distgraph <- function(mod, nclu, classnames){
-  ## Tratamiento previo de la informaci?n a graficar
-  aux2 <- datatreat(ncl = nclu, predcl = modalassign(fscores(mod)), clnames = classnames, classDist = summary(mod)$Class.Probability$prob)
-  ## Gr?fico circular
+# mod se trata del modelo estimado
+# nclu es el número de clústers
+# classnames es el nombre de las clases
+proportion_graph <- function(mod, nclu, classnames){
+  library(ggplot2)
+  # Tratamiento previo de los datos
+  aux2 <- graphic_data_preparation(ncl = nclu, predcl = modalassign(fscores(mod)), clnames = classnames, classDist = summary(mod)$Class.Probability$prob)
+  # Gráfico circular
   pie <- ggplot(as.data.frame(modalassign(fscores(mod))), aes(x = "", fill = factor(aux2))) + 
     geom_bar(width = 1) + coord_polar(theta = "y") +
     labs(fill="Clase", 
@@ -278,22 +445,21 @@ distgraph <- function(mod, nclu, classnames){
   pie
 }
 
-## Funci?n que realiza la asignaci?n modal de las observaciones.
-# Hacer uso de las probabilidades de pertenecer a cada cluster.
+# Función que realiza la asignación modal de las observaciones.
+# Hace uso de probs que son las probabilidades de pertenecer a cada cluster.
 modalassign <- function(probs){
   res <- c()
-  ## Para cada fila de probabilidades, que se corresponde a cada observaci?n
+  # Para cada fila de probabilidades, que se corresponde a cada observación
   for (i in 1:nrow(probs)){
-    ## Concateno al resultado la posici?n de la mayor probabilidad, es decir,
-    # si la mayor probabilidad es la primera, se asigna al primer grupo.
+    # Se concatena al resultado la posición de la mayor probabilidad, es decir,
+    # si la mayor probabilidad es la primera columna, se asigna al primer clúster.
     res <- c(res,which.max(probs[i,]))
   }
   return(as.vector(res))
 }
 
-## K-means, K-modes y C-means
-
-## Funci?n que tranforma un conjunto de variables a one-hot
+# Función que tranforma un conjunto de variables a one-hot
+# data es un dataframe para el cual cada columna se codificará mediante one-hot
 one_hot <- function (data){
   res <- c()
   for (i in 1:ncol(data)){
@@ -302,8 +468,11 @@ one_hot <- function (data){
   return(res)
 }
 
-## Funci?n para obtener la frecuencia de aparici?n de las respuestas en un cluster
-cluster_responses <- function(data,cnames){
+# Función para obtener la frecuencia de aparición de las respuestas en un cluster
+# data es un dataframe compuesto por los items para clusterizar
+# cnames es un vector con los nombres de estos items
+response_frequency <- function(data,cnames){
+  library(rowr)
   res <- c()
   for (i in 1:ncol(data)){
     a <- tabulate(data[,i])
@@ -315,33 +484,39 @@ cluster_responses <- function(data,cnames){
   return(res)
 }
 
-## Funci?n para obtener un gr?fico con la frecuencia de aparici?n de las respuestas 
+# Función para obtener un gráfico con la frecuencia de aparición de las respuestas 
 # en un cluster concreto.
+# data es un dataframe con los items para clusterizar
+# cnames es un vector con los nombres de estos items.
 response_graph <- function(data,cnames){
-  freq <- cluster_responses(data,cnames)
+  library(ggplot2)
+  freq <- response_frequency(data,cnames)
   item <- c(rep(1,length(cnames)),rep(2,length(cnames)),rep(3,length(cnames)))
   graph_data <- freq%>%pivot_longer(cols = colnames(freq), values_to = "value")
   graph_data <- cbind(graph_data,item)
   plt <- ggplot(graph_data)
-  # A?ado los ejes x e y, adem?s especif?co que se trata de un gr?fico de columnas
+  # Añado los ejes x e y, además especifíco que se trata de un gráfico de columnas
   plt <-  plt + aes(x = graph_data$item, y = graph_data$value) + geom_col() +
     facet_grid(factor(graph_data$name, levels = cnames))+
     theme(text=element_text(size=8)) +
-    # A?ado la escala del eje Y (frecuencias) de 0 a 1.
+    # Añado la escala del eje Y (frecuencias) de 0 a 1.
     scale_y_continuous(breaks=c(0.5,1),labels=c(0.5,1)) +
     xlab('Respuesta')+ylab('Probabilidad')
   plt
 }
 
+# Función auxiliar para realizar los gráficos de selección de Kmeans
 MyKmeansFUN <- function(x,k){
   kmeans(x, k, iter.max=50)
 }
-## Función que genera los gráficos de los distintos métodos de selección
- # del número de clústeres
- # data es dataframe con los items utilizados para clusterizar
- # i es una variable que me permite pivotar entre los algoritmos kmeans (1) y kmodes (2)
- # para generar los gráficos para el que corresponde. Kmeans por defecto
+
+# Función que genera los gráficos de los distintos métodos de selección
+# del número de clústeres
+# data es dataframe con los items utilizados para clusterizar
+# i es una variable que me permite pivotar entre los algoritmos kmeans (1) y kmodes (2)
+# para generar los gráficos para el que corresponde. Kmeans por defecto
 selection_graphs <- function(data,i=1){
+  library(factoextra)
   if (i==1){
     # Método elbow para kmeans
     a <- fviz_nbclust(data, kmeans, method = "wss") +
@@ -369,10 +544,14 @@ selection_graphs <- function(data,i=1){
   return(list(a,b,c))
 }
 
-## Funci?n para crear gr?fico circular de la distribuci?n de los individuos en
-# clusters.
+# Función para crear gráfico circular de la distribucion de los individuos en clusters.
+# modAssig es un vector de datos que se corresponde con la asignación modal de las observaciones.
 dist_graph <- function(modAssig){
+  library(ggplot2)
+  # Se obtienen frecuencia de asignación a cada cluster (proporciones).
   freq <- tabulate(modAssig)
+  # Se genera una columa con el número de clúster y la frecuencia en porcentaje de ese clúster
+  # para que la leyenda se genere con ese formato.
   for (i in 1:length(freq)){
     modAssig[modAssig==i] <- paste(i,paste0("(",round(freq[i]/sum(freq)*100,2),"%",")"), sep = " ")
   }
@@ -386,9 +565,27 @@ dist_graph <- function(modAssig){
   pie
 }
 
-## C-means
+# Función que genera una matriz K x m para generar el gráfico del índice.
+# K es el vector con los valores para número de clústeres.
+# m es el vector con los valores para el parámetro de borrosidad.
+# val es un vector con los valores del índice.
+index_matrix <- function(K,m,val){
+  res <- matrix(0,nrow = length(K),ncol = length(m))
+  val_index <- 1
+  for (i in 1:length(K)){
+    for (j in 1:length(m)) {
+      res[i,j] <- val[val_index]
+      val_index <- val_index+1
+    }
+  }
+  return(res)
+}
 
-##
+# Función para realizar los gráficos de los indices utilizados para la selección en C-means
+# K es un vector con los posibles valores para el número de clústeres.
+# m es un vector con los posibles valores para el parámetro de borrosidad.
+# i_matrix es una matríz K x m con los valores de un índice.
+# index_name es el nombre del índice para el que se está generando el gráfico.
 index_graph <- function(K,m,i_matrix,index_name){
   library(plotly)
   ex <- list(
@@ -408,25 +605,13 @@ index_graph <- function(K,m,i_matrix,index_name){
   print(p)
 }
 
-index_matrix <- function(K,m,val){
-  res <- matrix(0,nrow = length(K),ncol = length(m))
-  val_index <- 1
-  for (i in 1:length(K)){
-    for (j in 1:length(m)) {
-      res[i,j] <- val[val_index]
-      val_index <- val_index+1
-    }
-  }
-  return(res)
-}
-
-## Tabla con los valores de los distintos índices para seleccionar
- # el mejor modelo
- # Hace uso de los items utilizados para clusterizar
-model_selection_table <- function(data){
-  fuzzy_index <- c(1.1,1.2,1.4,1.6,1.8,2) ## Vector con ?ndices de fuzzificaci?n
-  fuzzy_cluster <- c(2,3,4,5,6) ## Vector con n?mero de clusters
-  ## Vectores para almacenar los valores de los ?ndices
+# Función para generar tabla con los valores de los distintos índices para seleccionar el 
+# mejor modelo (parámetros óptimos)
+# Hace uso de los items utilizados para clusterizar
+selection_table_cmeans <- function(data){
+  library(gridExtra)
+  fuzzy_index <- c(1.1,1.2,1.4,1.6,1.8,2) # Vector con índices de borrosidad
+  fuzzy_cluster <- c(2,3,4,5,6) # Vector con número de clusters
   xb <- c()
   fs <- c()
   pc <- c()
@@ -439,39 +624,42 @@ model_selection_table <- function(data){
       fs <- c(fs,fclustIndex(model,data,"fukuyama.sugeno"))
       pc <- c(pc,fclustIndex(model,data,"partition.coefficient"))
       pe <- c(pe,fclustIndex(model,data,"partition.entropy"))
-      ## Creo vector con el nombre de las filas para que tengan el formato
-      # "N?mero de clusters"-"?ndice de fuzzificaci?n"
+      # Se crea vector con el nombre de las filas para que tengan el formato
+      # "Número de clusters"-"Índice de borrosidad".
       trownames <- c(trownames,paste0(fuzzy_cluster[i],"-",fuzzy_index[j]))
     }
   }
-  ## Creo el dataframe con los valores de los ?ndices
+  # Se genera el dataframe con los valores de los índices
   Ktable <- as.data.frame(cbind(xb,fs,pc,pe))
   tcolnames <- c('XB','FS','PC','PE')
-  ## Cambio nombres de columnas y de filas para poder identificar los valores
-  # de la tabla
+  # Se cambian los nombres de columnas y de filas para poder identificar los valores
+  # de la tabla.
   colnames(Ktable) <- tcolnames
   rownames(Ktable) <- trownames
-  t <- ztable(Ktable)
-  print(t)
+  Ktable <- round(Ktable, 2)
+  # Se guarda tabla como imagen.
+  png(filename = "Cmeans/SelectionTableCmeans.png", width = 65*ncol(Ktable), height = 25*nrow(Ktable))
+  grid.table(Ktable)
+  dev.off()
+  # Se retorna un dataframe con los valores de los índices para generar gráficos.
   res <- list("m" = fuzzy_index, "K" = as.factor(fuzzy_cluster), "xb" = xb, "fs" = fs,
               "pc" = pc, "pe" = pe)
   return(res)
 }
 
-## Data analysis
-## LCA
-## Función para separar datos en una dataframe diferente para cada cluster
+# Función para separar datos en una dataframe diferente para cada cluster.
+# data se corresponde con una dataframe con las observaciones clusterizadas.
 cl_data_list <- function(data){
   res <- c()
-  for (i in 1:max(data$Cluster3)){
-    res[[i]] <- data[data$Cluster3==i,]
+  for (i in 1:max(data$Cluster)){
+    res[[i]] <- data[data$Cluster==i,]
   }
   return(res)
 }
 
-## k-means, k-modes, c-means
- # Chi-cuadrado de Pearson para todas las variables utilizadas para clusterizar
-chisq_items <- function(dataf){
+# Chi-cuadrado de Pearson para todas las variables utilizadas para clusterizar
+# data es un dataframe que incluye los items utilizados para clusterizar
+chi_squared_items <- function(dataf){
   tbl_Sexo <- table(dataf$Cluster,dataf$Sexo)
   p_Sexo <- chisq.test(tbl_Sexo)$p.value
   tbl_ECivil <- table(dataf$Cluster,dataf$ECivil)
@@ -500,8 +688,16 @@ chisq_items <- function(dataf){
   return(res)
 }
 
- # Calcula los valores latentes de los factores y los añade al dataframe
-valores_latentes <- function(dataf){
+# Calcula los valores latentes de los constructos mediantes Confirmatory Factor Analysis (CFA)
+# y los añade al dataframe.
+# dataf es un dataframe con los datos inicialmente leidos
+valores_latentes_cfa <- function(dataf){
+  modelocfa <-"
+  compulsivo_cfa =~ v038 +v039 + v040 + v041 + v042 + v043 + v044 + v045 + v046 + v047 + v048
+  exceso_cfa =~ v025 +v026 + v027 + v028 + v029 + v031 
+  nodisfrute_cfa =~ v032 + v033 + v034 + v035 + v036  
+  intenabandonar_cfa =~ v128 + v129 + v130 + v131 +v132 
+  "
   # CFA
   fit <- cfa(modelocfa, data=dataf, estimator="MLM")
   summary(fit, fit.measures=TRUE,  standardized = TRUE, rsquare= T)
@@ -509,17 +705,17 @@ valores_latentes <- function(dataf){
   # Predicción valores latentes
   valoreslatentes <-lavPredict(fit)
   valoreslatentes <- as.data.frame(valoreslatentes)
-  dataf <- cbind(dataf,valoreslatentes)
-  dataf$Cluster <- as.factor(dataf$Cluster)
-  return(dataf)
+  return(valoreslatentes)
 }
 
-## Concordancia observada para el cálculo de Kappa de Cohen
+# Concordancia observada para el cálculo de Kappa de Cohen
+# crosstable es la tabla cruzada entre dos algoritmos de clustering
 obs_agreement <- function(crosstable){
   return(sum(diag(crosstable))/sum(crosstable))
 }
 
-## Concordancia esperada para el cálculo de Kappa de Cohen
+# Concordancia esperada para el cálculo de Kappa de Cohen
+# crosstable es la tabla cruzada entre dos algoritmos de clustering
 exp_agreement <- function(crosstable){
   values1 <- colSums(crosstable)
   values2 <- colSums(t(crosstable))
