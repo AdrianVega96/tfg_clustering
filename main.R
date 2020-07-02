@@ -1,11 +1,11 @@
 library(readxl) # Leer datos excel
-library(lavaan) # CFA para calculo de valores latentes
 library(psych)  # Alpha de Cronbach
 library(tidyverse) # Para el manejo de datos
 library(mlogit) # Regresiones logisticas multinom.
 library(vcd) # Kappa de Cohen
 library(normtest) # Test de normalidad
 rm(list = ls(all = TRUE))
+unlink("DatosClusterizados.xlsx")
 source("functions.R") # Funciones auxiliares
 set.seed(12345)
 
@@ -97,17 +97,17 @@ data_lca$Cluster <- as.factor(data_lca$Cluster)
 
 # Test de Normalidad de Intención de Abandono en LCA
 # Intención de abandono composite
-normia <- shapiro.test(data_lca$intenabandonar)
+normia_lca <- shapiro.test(data_lca$intenabandonar)
 # Intención de abandono factores
-normia_cfa <- shapiro.test(data_lca$intenabandonar_cfa)
+normia_lca_cfa <- shapiro.test(data_lca$intenabandonar_cfa)
 
 # Kruskal-Wallis de la intencion de abandono
 # Constructos por factores
-KWia <- kruskal.test(intenabandonar ~ Cluster, data = data_lca)
-KWia
+KWia_lca_cfa <- kruskal.test(intenabandonar_cfa ~ Cluster, data = data_lca)
+KWia_lca_cfa
 # Constructos por composite
-KWia2 <- kruskal.test(intenabandonar_cfa ~ Cluster, data = data_lca)
-KWia2
+KWia_lca <- kruskal.test(intenabandonar ~ Cluster, data = data_lca)
+KWia_lca
 
 # Regresión Logística Multinomial (MLR) para constructos por factores
 # Segundo clúster como referencia
@@ -166,39 +166,27 @@ data_lca_lm <- lm(intenabandonar ~ exceso + compulsivo + nodisfrute +
 summary(data_lca_lm)
 
 # C-means (data_cmeans), k-means (data_kmeans) y k-modes (data_kmodes)
-datos <- data_kmodes
-# Chi-cuadrado de Pearson de items para clusterizar
-chi_tests <- chi_squared_items(datos)
+datos <- list(data_cmeans,data_kmeans,data_kmodes)
+names(datos) <- c("cmeans","kmeans","kmodes")
 
 # Test de normalidad constructos por composite
-normia <- shapiro.test(datos$intenabandonar)
-normco <- shapiro.test(datos$compulsivo)
-normex <- shapiro.test(datos$exceso)
-normnd <- shapiro.test(datos$nodisfrute)
+normia <- shapiro.test(datos[[1]]$intenabandonar)
+normco <- shapiro.test(datos[[1]]$compulsivo)
+normex <- shapiro.test(datos[[1]]$exceso)
+normnd <- shapiro.test(datos[[1]]$nodisfrute)
 normtc <- cbind("intenabandono" = normia,"compulsivo" = normco,
                 "exceso" = normex,"nodisfrute" = normnd)
 
 # Test de normalidad constructos por factores
-normia <- shapiro.test(datos$intenabandonar_cfa)
-normco <- shapiro.test(datos$compulsivo_cfa)
-normex <- shapiro.test(datos$exceso_cfa)
-normnd <- shapiro.test(datos$nodisfrute_cfa)
+normia <- shapiro.test(datos[[1]]$intenabandonar_cfa)
+normco <- shapiro.test(datos[[1]]$compulsivo_cfa)
+normex <- shapiro.test(datos[[1]]$exceso_cfa)
+normnd <- shapiro.test(datos[[1]]$nodisfrute_cfa)
 normtf <- cbind("intenabandono" = normia,"compulsivo" = normco,
                 "exceso" = normex,"nodisfrute" = normnd)
 
+# Chi-cuadrado de Pearson de items para clusterizar
+chi_tests <- chi_squared_items(datos)
+
 # Kruskal-Wallis constructos
-datos$Cluster <- as.factor(datos$Cluster)
-# Valores latentes por composite
-KWia <- kruskal.test(intenabandonar ~ Cluster, data = datos)
-KWco <- kruskal.test(compulsivo ~ Cluster, data = datos)
-KWex <- kruskal.test(exceso ~ Cluster, data = datos)
-KWnd <- kruskal.test(nodisfrute ~ Cluster, data = datos)
-KWcomposite <- cbind("intenabandono" = KWia,"compulsivo" = KWco,
-                "exceso" = KWex,"nodisfrute" = KWnd)
-# Valores latentes por factores
-KWia <- kruskal.test(intenabandonar_cfa ~ Cluster, data = datos)
-KWco <- kruskal.test(compulsivo_cfa ~ Cluster, data = datos)
-KWex <- kruskal.test(exceso_cfa ~ Cluster, data = datos)
-KWnd <- kruskal.test(nodisfrute_cfa ~ Cluster, data = datos)
-KWfactores <- cbind("intenabandono" = KWia,"compulsivo" = KWco,
-                 "exceso" = KWex,"nodisfrute" = KWnd)
+KW_tests <- kruskal_test(datos)

@@ -501,7 +501,7 @@ response_graph <- function(data,cnames){
     theme(text=element_text(size=8)) +
     # Añado la escala del eje Y (frecuencias) de 0 a 1.
     scale_y_continuous(breaks=c(0.5,1),labels=c(0.5,1)) +
-    xlab('Respuesta')+ylab('Probabilidad')
+    xlab('Respuesta')+ylab('Frecuencia')
   plt
 }
 
@@ -658,33 +658,67 @@ cl_data_list <- function(data){
 }
 
 # Chi-cuadrado de Pearson para todas las variables utilizadas para clusterizar
-# data es un dataframe que incluye los items utilizados para clusterizar
+# dataf es una lista de dataframes que incluye los items utilizados para clusterizar
+# para cada algoritmo
 chi_squared_items <- function(dataf){
-  tbl_Sexo <- table(dataf$Cluster,dataf$Sexo)
-  p_Sexo <- chisq.test(tbl_Sexo)$p.value
-  tbl_ECivil <- table(dataf$Cluster,dataf$ECivil)
-  p_ECivil <- chisq.test(tbl_ECivil)$p.value
-  tbl_NFam <- table(dataf$Cluster,dataf$NFamiliar)
-  p_NFam <- chisq.test(tbl_NFam)$p.value
-  tbl_PEmp <- table(dataf$Cluster,dataf$PriEmp)
-  p_PEmp <- chisq.test(tbl_PEmp)$p.value
-  tbl_Edad <- table(dataf$Cluster,dataf$Edad)
-  p_Edad <- chisq.test(tbl_Edad)$p.value
-  tbl_Exp <- table(dataf$Cluster,dataf$Exp)
-  p_Exp <- chisq.test(tbl_Exp)$p.value
-  tbl_NEmp <- table(dataf$Cluster,dataf$NEmple)
-  p_NEmp <- chisq.test(tbl_NEmp)$p.value
-  tbl_NSoc <- table(dataf$Cluster,dataf$NSocios)
-  p_NSoc <- chisq.test(tbl_NSoc)$p.value
-  tbl_NHij <- table(dataf$Cluster,dataf$NHijos)
-  p_NHij <- chisq.test(tbl_NHij)$p.value
-  tbl_NEdu <- table(dataf$Cluster,dataf$NivelEd)
-  p_NEdu <- chisq.test(tbl_NEdu)$p.value
-  res <- list("Sexo" = list(tbl_Sexo,p_Sexo),"ECivil" = list(tbl_ECivil,p_ECivil),
+  res <- c()
+  for (i in 1:length(dataf)){
+    tbl_Sexo <- table(dataf[[i]]$Cluster,dataf[[i]]$Sexo)
+    p_Sexo <- chisq.test(tbl_Sexo)$p.value
+    tbl_ECivil <- table(dataf[[i]]$Cluster,dataf[[i]]$ECivil)
+    p_ECivil <- chisq.test(tbl_ECivil)$p.value
+    tbl_NFam <- table(dataf[[i]]$Cluster,dataf[[i]]$NFamiliar)
+    p_NFam <- chisq.test(tbl_NFam)$p.value
+    tbl_PEmp <- table(dataf[[i]]$Cluster,dataf[[i]]$PriEmp)
+    p_PEmp <- chisq.test(tbl_PEmp)$p.value
+    tbl_Edad <- table(dataf[[i]]$Cluster,dataf[[i]]$Edad)
+    p_Edad <- chisq.test(tbl_Edad)$p.value
+    tbl_Exp <- table(dataf[[i]]$Cluster,dataf[[i]]$Exp)
+    p_Exp <- chisq.test(tbl_Exp)$p.value
+    tbl_NEmp <- table(dataf[[i]]$Cluster,dataf[[i]]$NEmple)
+    p_NEmp <- chisq.test(tbl_NEmp)$p.value
+    tbl_NSoc <- table(dataf[[i]]$Cluster,dataf[[i]]$NSocios)
+    p_NSoc <- chisq.test(tbl_NSoc)$p.value
+    tbl_NHij <- table(dataf[[i]]$Cluster,dataf[[i]]$NHijos)
+    p_NHij <- chisq.test(tbl_NHij)$p.value
+    tbl_NEdu <- table(dataf[[i]]$Cluster,dataf[[i]]$NivelEd)
+    p_NEdu <- chisq.test(tbl_NEdu)$p.value
+    chi_items <- list("Sexo" = list(tbl_Sexo,p_Sexo),"ECivil" = list(tbl_ECivil,p_ECivil),
               "NFam" = list(tbl_NFam,p_NFam),"PEmp" = list(tbl_PEmp,p_PEmp),
               "Edad" = list(tbl_Edad,p_Edad),"Exp" = list(tbl_Exp,p_Exp),
               "NEmp" = list(tbl_NEmp,p_NEmp),"NSoc" = list(tbl_NSoc,p_NSoc),
               "NHij" = list(tbl_NHij,p_NHij),"NEdu" = list(tbl_NEdu,p_NEdu))
+    res[[i]] <- chi_items
+  }
+  names(res) <- names(dataf)
+  return(res)
+}
+
+# Calcula el test de Kruskal-Wallis para los constructos calculados por factores y composite
+# y para cada algorítmo de clustering
+# datos es una lista de dataframes con los datos para todos los algoritmos de clustering
+kruskal_test <- function(datos){
+  res <- c()
+  for (i in 1:length(datos)){
+    datos[[i]]$Cluster <- as.factor(datos[[i]]$Cluster)
+    # Valores latentes por composite
+    KWia <- kruskal.test(intenabandonar ~ Cluster, data = datos[[i]])
+    KWco <- kruskal.test(compulsivo ~ Cluster, data = datos[[i]])
+    KWex <- kruskal.test(exceso ~ Cluster, data = datos[[i]])
+    KWnd <- kruskal.test(nodisfrute ~ Cluster, data = datos[[i]])
+    KWcomposite <- cbind("intenabandono" = KWia,"compulsivo" = KWco,
+                         "exceso" = KWex,"nodisfrute" = KWnd)
+    # Valores latentes por factores
+    KWia <- kruskal.test(intenabandonar_cfa ~ Cluster, data = datos[[i]])
+    KWco <- kruskal.test(compulsivo_cfa ~ Cluster, data = datos[[i]])
+    KWex <- kruskal.test(exceso_cfa ~ Cluster, data = datos[[i]])
+    KWnd <- kruskal.test(nodisfrute_cfa ~ Cluster, data = datos[[i]])
+    KWfactores <- cbind("intenabandono" = KWia,"compulsivo" = KWco,
+                        "exceso" = KWex,"nodisfrute" = KWnd)
+    KWres <- list("KWcfa" = KWfactores, "KWcomp" = KWcomposite)
+    res[[i]] <- KWres
+  }
+  names(res) <- names(datos)
   return(res)
 }
 
@@ -692,6 +726,7 @@ chi_squared_items <- function(dataf){
 # y los añade al dataframe.
 # dataf es un dataframe con los datos inicialmente leidos
 valores_latentes_cfa <- function(dataf){
+  library(lavaan) # CFA para calculo de valores latentes
   modelocfa <-"
   compulsivo_cfa =~ v038 +v039 + v040 + v041 + v042 + v043 + v044 + v045 + v046 + v047 + v048
   exceso_cfa =~ v025 +v026 + v027 + v028 + v029 + v031 
